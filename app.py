@@ -173,15 +173,12 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             st.dataframe(df_results, use_container_width=True)
 
             st.subheader("Resumen de Cobertura de Demanda")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(  
+            st.metric(  
                     label="Turnos de Sábado Cubiertos vs. Necesarios",
                     value=f"Cubiertos: {int(total_sabados_cubiertos)} ({int(total_sabados_cubiertos/4)}) | Necesarios:{TOTAL_DEMANDA_SABADO} ({int(TOTAL_DEMANDA_SABADO/4)})",
                     delta=f"{int(total_sabados_cubiertos - TOTAL_DEMANDA_SABADO)} (Excedente)"
                 )
-            with col2:
-                st.metric(
+            st.metric(
                     label="Turnos de Domingo Cubiertos vs. Necesarios",
                     value=f"Cubiertos: {int(total_domingos_cubiertos)} ({int(total_domingos_cubiertos/4)}) | Necesarios:{TOTAL_DEMANDA_DOMINGO} ({int(TOTAL_DEMANDA_DOMINGO/4)})",
                     delta=f"{int(total_domingos_cubiertos - TOTAL_DEMANDA_DOMINGO)} (Excedente)"
