@@ -5,7 +5,7 @@ import math
 import io
 from collections import defaultdict
 
-# --- FUNCIÓN 1: RESTAURADA Y MEJORADA ---
+# --- FUNCIÓN 1: SIN CAMBIOS ---
 def generate_3week_patterns():
     """
     Genera TODOS los patrones de trabajo posibles que se pueden
@@ -15,22 +15,18 @@ def generate_3week_patterns():
     """
     pattern_map = {}
     # s = sábados solos, d = domingos solos, c = fines de semana completos
-    # Un empleado tiene 3 semanas para trabajar
     for c in range(4): # 0, 1, 2, 3
         for s in range(4): # 0, 1, 2, 3
             for d in range(4): # 0, 1, 2, 3
                 
                 total_weekends_worked = s + d + c
                 
-                # Regla: El patrón debe ocupar como máximo 3 fines de semana
                 if total_weekends_worked > 0 and total_weekends_worked <= 3:
                     
                     # Aporte SEMANAL (promedio sobre las 3 semanas de trabajo)
-                    # Esta es la "traducción" para el modelo semanal
                     avg_s = (s + c) / 3.0
                     avg_d = (d + c) / 3.0
                     
-                    # El optimizador PuLP usará este aporte promedio
                     pulp_tuple = (avg_s, avg_d)
                     components = (s, d, c)
                     
@@ -50,11 +46,10 @@ def generate_3week_patterns():
                         
     return pattern_map
 
-# --- FUNCIÓN 2: MODIFICADA ---
+# --- FUNCIÓN 2: SIN CAMBIOS ---
 def generate_schedule_df(results_vars, employee_types_data, master_map):
     """
     Genera la plantilla de turnos detallada.
-    ¡Esta función ahora es la más compleja!
     """
     schedule_rows = []
     weeks = [1, 2, 3, 4]
@@ -63,7 +58,6 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
     id_counters = defaultdict(int)
     temp_rows = []
 
-    # 1. Recopilar todas las asignaciones de empleados del modelo
     for type_name in employee_types_data.keys():
         for pattern_str in employee_types_data[type_name]["selected_patterns"]:
             for rest_week in weeks:
@@ -84,7 +78,6 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
 
     temp_rows.sort(key=lambda x: x["sort_key"])
 
-    # 2. Construir la fila final del DataFrame
     for emp in temp_rows:
         final_row = {
             "ID Empleado": emp["id"],
@@ -92,36 +85,28 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
             "Patrón Asignado": emp["pattern_str"]
         }
         
-        # Obtener los componentes (s,d,c) del patrón
         s, d, c = master_map[emp["pattern_str"]]["components"]
         
-        # Semanas disponibles para trabajar
         work_weeks = [w for w in weeks if w != emp["rest_week"]]
         
-        # Crear un horario base para las semanas de trabajo
         work_schedule = {}
         
-        # Asignar Fines de Semana Completos
         weeks_for_c = work_weeks[:c]
         for wk in weeks_for_c:
             work_schedule[wk] = "Finde Completo"
         
-        # Asignar Sábados solos
         available_weeks = [w for w in work_weeks if w not in work_schedule][:s]
         for wk in available_weeks:
             work_schedule[wk] = "Sábado"
 
-        # Asignar Domingos solos
         available_weeks = [w for w in work_weeks if w not in work_schedule][:d]
         for wk in available_weeks:
             work_schedule[wk] = "Domingo"
         
-        # Rellenar semanas de trabajo restantes (si s+d+c < 3)
         available_weeks = [w for w in work_weeks if w not in work_schedule]
         for wk in available_weeks:
-            work_schedule[wk] = "Descanso" # Es una semana de trabajo, pero este patrón no la usa
+            work_schedule[wk] = "Descanso" 
 
-        # Asignar al calendario final
         for w in weeks:
             col_name = f"Semana {w}"
             if w == emp["rest_week"]:
@@ -139,7 +124,6 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
     cols_order = ["ID Empleado", "Tipo", "Patrón Asignado"] + week_cols_final
     df = df.reindex(columns=cols_order) 
 
-    # 3. Añadir Totales por Semana
     total_s_trab = {"ID Empleado": "TOTAL SÁB. TRABAJADOS (Semana)"}
     total_d_trab = {"ID Empleado": "TOTAL DOM. TRABAJADOS (Semana)"}
     total_finde_desc = {"ID Empleado": "TOTAL FINDES DESCANSO (Semana)"}
@@ -155,7 +139,6 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
     totals_df = pd.DataFrame([total_s_trab, total_d_trab, total_finde_desc])
     df = pd.concat([df, totals_df], ignore_index=True)
 
-    # 4. Añadir GRAN TOTAL MENSUAL
     total_s_mes = sum(total_s_trab[col] for col in week_cols_final)
     total_d_mes = sum(total_d_trab[col] for col in week_cols_final)
     
@@ -198,12 +181,11 @@ st.title("Optimizador de Plantilla de Fin de Semana (Cobertura Semanal)")
 st.write("Esta herramienta calcula la plantilla mínima para cubrir la demanda **cada semana**, asumiendo que cada empleado rota un fin de semana libre al mes.")
 
 # --- DATOS GLOBALES PARA EL MODELO ---
-# Generar el mapa maestro de patrones UNA SOLA VEZ
 master_pattern_map = generate_3week_patterns()
-pattern_options = list(master_pattern_map.keys())
+# NO creamos pattern_options aquí
 WEEKS = [1, 2, 3, 4]
 
-# --- ENTRADAS DEL USUARIO ---
+# --- ENTRADAS DEL USUARIO (SECCIÓN MODIFICADA) ---
 config_expander = st.expander("Configuración de Demanda y Empleados", expanded=True)
 with config_expander:
     st.header("Parámetros de Entrada")
@@ -222,33 +204,53 @@ with config_expander:
         st.markdown(f"### Configuración del Tipo {type_name}")
         max_employees = st.number_input(f"Nº Máximo de empleados del Tipo {type_name}", min_value=0, value=150, step=1, key=f"max_{type_name}")
         
-        # --- INTERFAZ RESTAURADA ---
-        selected_display_options = st.multiselect(
-            f"Patrones de 3 semanas permitidos para el Tipo {type_name}",
-            options=pattern_options,
-            key=f"multi_{type_name}",
-            default=[p for p in pattern_options if "3" in p] # Default a patrones de 3 servicios
+        # --- INICIO DE LA MODIFICACIÓN ---
+        
+        # 1. AÑADIMOS EL FILTRO DE SERVICIOS TOTALES
+        services_per_employee = st.number_input(
+            f"Nº total de servicios/mes para el Tipo {type_name}",
+            min_value=1, value=4, max_value=6, step=1,
+            key=f"serv_{type_name}"
         )
         
+        # 2. FILTRAMOS EL MAPA MAESTRO
+        filtered_options = []
+        for pattern_str, data in master_pattern_map.items():
+            s, d, c = data["components"]
+            total_services = s + d + (c * 2)
+            # Comprobar si los servicios totales de este patrón coinciden
+            if total_services == services_per_employee:
+                filtered_options.append(pattern_str)
+        
+        # 3. EL MULTISELECT AHORA USA LAS OPCIONES FILTRADAS
+        if filtered_options:
+            selected_display_options = st.multiselect(
+                f"Distribuciones de {services_per_employee} servicios permitidas para el Tipo {type_name}",
+                options=filtered_options,
+                key=f"multi_{type_name}",
+                default=filtered_options # Seleccionar todas por defecto
+            )
+        else:
+            st.warning(f"No se encontraron patrones de 3 semanas que sumen {services_per_employee} servicios. Prueba con otro número.")
+            selected_display_options = []
+        
+        # --- FIN DE LA MODIFICACIÓN ---
+
         employee_types_data[type_name] = {
             "max_employees": max_employees,
             "selected_patterns": selected_display_options,
         }
 
-# --- BOTÓN DE CÁLCULO ---
+# --- BOTÓN DE CÁLCULO (SIN CAMBIOS) ---
 if st.button("Calcular Plantilla Óptima", type="primary"):
 
-    # Demanda total para el resumen
     TOTAL_DEMANDA_SABADO = DEMANDA_SABADO * 4
     TOTAL_DEMANDA_DOMINGO = DEMANDA_DOMINGO * 4
 
     model = pulp.LpProblem("Minimizar_Plantilla_Fin_de_Semana_Semanal", pulp.LpMinimize)
 
-    # --- LÓGICA DE VARIABLES MODIFICADA ---
-    
     N_vars = pulp.LpVariable.dicts("TotalEmpleados", employee_type_names, lowBound=0, cat='Integer')
 
-    # x_vars: x[Tipo][Patrón_String][Semana_que_DESCANSA]
     x_vars = {}
     for type_name in employee_type_names:
         x_vars[type_name] = {}
@@ -262,35 +264,27 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
 
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
-    # --- LÓGICA DE RESTRICCIONES MODIFICADA ---
-    # Ahora es más complejo: el aporte de cada patrón debe ser calculado
-    
+    # --- RESTRICCIONES (SIN CAMBIOS) ---
     for w in WEEKS:
-        # Semanas en las que la gente SÍ trabaja
         work_weeks = [wk for wk in WEEKS if wk != w]
         
-        # Restricción Sábado, Semana 'w'
         model += pulp.lpSum(
-            # Sumar a todos los que NO descansan esta semana
-            x_vars[type_name][pattern_str][rest_week] * # Multiplicar por su aporte SEMANAL de Sábados
-            master_pattern_map[pattern_str]["pulp"][0] 
+            x_vars[type_name][pattern_str][rest_week] * master_pattern_map[pattern_str]["pulp"][0] 
             
             for type_name in employee_type_names
             for pattern_str in employee_types_data[type_name]["selected_patterns"]
             for rest_week in work_weeks 
         ) >= DEMANDA_SABADO, f"Cobertura_Sabado_Semana_{w}"
 
-        # Restricción Domingo, Semana 'w'
         model += pulp.lpSum(
             x_vars[type_name][pattern_str][rest_week] *
-            master_pattern_map[pattern_str]["pulp"][1] # Aporte SEMANAL de Domingos
+            master_pattern_map[pattern_str]["pulp"][1]
 
             for type_name in employee_type_names
             for pattern_str in employee_types_data[type_name]["selected_patterns"]
             for rest_week in work_weeks
         ) >= DEMANDA_DOMINGO, f"Cobertura_Domingo_Semana_{w}"
 
-    # Restricciones de vínculo y máximos
     for type_name in employee_type_names:
         model += pulp.lpSum(
             x_vars[type_name][pattern_str][rest_week]
@@ -300,10 +294,9 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
         
         model += N_vars[type_name] <= employee_types_data[type_name]["max_employees"], f"Maximo_Empleados_{type_name}"
 
-    # Resolver el modelo
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 
-    # --- MOSTRAR RESULTADOS ---
+    # --- MOSTRAR RESULTADOS (SIN CAMBIOS) ---
     st.header("Resultados de la Optimización")
     status = pulp.LpStatus[model.status]
     st.write(f"**Estado de la Solución:** {status}")
@@ -325,17 +318,14 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
                     value=int(total_tipo)
                 )
 
-        # --- LÓGICA DE RESULTADOS MODIFICADA ---
         results_data = []
         total_sabados_cubiertos_mes = 0
         total_domingos_cubiertos_mes = 0
 
-        # Calcular cobertura total mensual (para los st.metric)
         for w in WEEKS:
             total_sabados_cubiertos_mes += pulp.value(model.constraints[f"Cobertura_Sabado_Semana_{w}"].expression())
             total_domingos_cubiertos_mes += pulp.value(model.constraints[f"Cobertura_Domingo_Semana_{w}"].expression())
 
-        # Recopilar datos para la tabla resumen
         for type_name in employee_type_names:
             total_tipo_empleado = type_totals.get(type_name, 0)
             
@@ -345,9 +335,9 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
                 if num_empleados_total_pattern > 0:
                     
                     s, d, c = master_pattern_map[pattern_str]["components"]
-                    servicios_mes = (s + c) * 3 + (d + c) * 3 # Aporte mensual total de este grupo
-                    sabados_aportados = num_empleados_total_pattern * (s + c)
-                    domingos_aportados = num_empleados_total_pattern * (d + c)
+                    servicios_mes_por_persona = s + d + (c * 2)
+                    sabados_aportados_total = num_empleados_total_pattern * (s + c)
+                    domingos_aportados_total = num_empleados_total_pattern * (d + c)
                     
                     pct_del_tipo = (num_empleados_total_pattern / total_tipo_empleado * 100) if total_tipo_empleado > 0 else 0
                     pct_del_total = (num_empleados_total_pattern / total_empleados * 100) if total_empleados > 0 else 0
@@ -355,12 +345,12 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
                     results_data.append({
                         "Tipo": f"Tipo {type_name}",
                         "Partición": pattern_str,
-                        "Servicios/Mes (total)": s+d+(c*2), # Servicios por persona al mes
+                        "Servicios/Mes (total)": servicios_mes_por_persona,
                         "Nº Empleados": int(num_empleados_total_pattern),
                         "% s/ Total Tipo": pct_del_tipo,
                         "% s/ Total Plantilla": pct_del_total,
-                        "Sábados Cubiertos (Mes)": int(sabados_aportados),
-                        "Domingos Cubiertos (Mes)": int(domingos_aportados),
+                        "Sábados Cubiertos (Mes)": int(sabados_aportados_total),
+                        "Domingos Cubiertos (Mes)": int(domingos_aportados_total),
                     })
         
         if results_data:  
@@ -402,7 +392,6 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
                 }
             )
             
-            # --- BOTÓN DE DESCARGA (AHORA ES CORRECTO) ---
             st.subheader("Descargar Plantilla de Turnos Semanal")
             
             df_plantilla = generate_schedule_df(x_vars, employee_types_data, master_pattern_map)
@@ -428,7 +417,7 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
             "**Sugerencias:**\n"
             "- Aumentar el 'Nº Máximo de empleados' para uno o más tipos.\n"
             "- Permitir patrones de trabajo más flexibles (ej. '3 Findes Completos' es el más eficiente).\n"
-            "- Revisar si las cifras de demanda son correctas."
+            " - Revisar si las cifras de demanda son correctas."
         )
     else:
         st.warning(f"**El modelo no encontró una solución óptima.** Estado: {status}. Revise los parámetros de entrada.")
