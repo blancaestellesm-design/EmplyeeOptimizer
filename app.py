@@ -61,7 +61,8 @@ def generate_schedule_df(results_vars, employee_types_data, master_map):
     for type_name in employee_types_data.keys():
         for pattern_str in employee_types_data[type_name]["selected_patterns"]:
             for rest_week in weeks:
-                num_empleados = int(results_vars[type_name][pattern_str][rest_week].value())
+                # Usamos round() y luego int() por seguridad con los floats de PuLP
+                num_empleados = int(round(results_vars[type_name][pattern_str][rest_week].value()))
                 
                 if num_empleados > 0:
                     for i in range(num_empleados):
@@ -296,7 +297,7 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
 
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 
-    # --- MOSTRAR RESULTADOS (SIN CAMBIOS) ---
+    # --- MOSTRAR RESULTADOS (SECCIÓN CORREGIDA) ---
     st.header("Resultados de la Optimización")
     status = pulp.LpStatus[model.status]
     st.write(f"**Estado de la Solución:** {status}")
@@ -315,27 +316,39 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
             with cols[i]:
                 st.metric(
                     label=f"Total Empleados Tipo {type_name}",
-                    value=int(total_tipo)
+                    # Usamos round() y luego int() por seguridad con los floats
+                    value=int(round(total_tipo))
                 )
 
         results_data = []
         total_sabados_cubiertos_mes = 0
         total_domingos_cubiertos_mes = 0
 
+        # -----------------------------------------------------------------
+        # --- INICIO DE LA CORRECCIÓN DEL ERROR AttributeError ---
+        # -----------------------------------------------------------------
+        # El valor de la cobertura (LHS) es el 'slack' (constraint.value()) + el lado derecho (RHS)
+        # .value() devuelve el "slack" (LHS - RHS). Queremos el LHS.
+        # LHS = constraint.value() + RHS
         for w in WEEKS:
-            total_sabados_cubiertos_mes += pulp.value(model.constraints[f"Cobertura_Sabado_Semana_{w}"].expression())
-            total_domingos_cubiertos_mes += pulp.value(model.constraints[f"Cobertura_Domingo_Semana_{w}"].expression())
+            total_sabados_cubiertos_mes += (model.constraints[f"Cobertura_Sabado_Semana_{w}"].value() + DEMANDA_SABADO)
+            total_domingos_cubiertos_mes += (model.constraints[f"Cobertura_Domingo_Semana_{w}"].value() + DEMANDA_DOMINGO)
+        # -----------------------------------------------------------------
+        # --- FIN DE LA CORRECCIÓN ---
+        # -----------------------------------------------------------------
 
         for type_name in employee_type_names:
             total_tipo_empleado = type_totals.get(type_name, 0)
             
             for pattern_str in employee_types_data[type_name]["selected_patterns"]:
+                # Sumamos los empleados de este patrón en sus 4 posibles semanas de descanso
                 num_empleados_total_pattern = sum(x_vars[type_name][pattern_str][rest_week].value() for rest_week in WEEKS)
                 
-                if num_empleados_total_pattern > 0:
+                if num_empleados_total_pattern > 0.001: # Usamos un umbral por si hay floats pequeños
                     
                     s, d, c = master_pattern_map[pattern_str]["components"]
                     servicios_mes_por_persona = s + d + (c * 2)
+                    # Contribución total al mes de este grupo de empleados
                     sabados_aportados_total = num_empleados_total_pattern * (s + c)
                     domingos_aportados_total = num_empleados_total_pattern * (d + c)
                     
@@ -346,31 +359,38 @@ if st.button("Calcular Plantilla Óptima", type="primary"):
                         "Tipo": f"Tipo {type_name}",
                         "Partición": pattern_str,
                         "Servicios/Mes (total)": servicios_mes_por_persona,
-                        "Nº Empleados": int(num_empleados_total_pattern),
+                        # Usamos round() y luego int() por seguridad
+                        "Nº Empleados": int(round(num_empleados_total_pattern)),
                         "% s/ Total Tipo": pct_del_tipo,
                         "% s/ Total Plantilla": pct_del_total,
-                        "Sábados Cubiertos (Mes)": int(sabados_aportados_total),
-                        "Domingos Cubiertos (Mes)": int(domingos_aportados_total),
+                        "Sábados Cubiertos (Mes)": int(round(sabados_aportados_total)),
+                        "Domingos Cubiertos (Mes)": int(round(domingos_aportados_total)),
                     })
         
-        if results_data:  
+        if results_data: 
             
             st.subheader("Resumen de Cobertura de Demanda (Total Mes)")
             col1, col2 = st.columns(2)
             with col1:
+                # Usamos round() y luego int() por seguridad
+                total_s_int = int(round(total_sabados_cubiertos_mes))
+                delta_s_int = total_s_int - TOTAL_DEMANDA_SABADO
                 st.metric(
                     label="Turnos de Sábado Cubiertos (Total Mes)",
-                    value=f"{int(total_sabados_cubiertos_mes)}",
-                    delta=f"{int(total_sabados_cubiertos_mes - TOTAL_DEMANDA_SABADO)} (Excedente)"
+                    value=f"{total_s_int}",
+                    delta=f"{delta_s_int} (Excedente)"
                 )
-                st.caption(f"Requeridos: {TOTAL_DEMANDA_SABADO} (Promedio: {DEMANDA_SABADO}/sáb)")
+                st.caption(f"Requeridos: {TOTAL_DEMANDA_SABADO} ({DEMANDA_SABADO}/sáb)")
             with col2:
+                # Usamos round() y luego int() por seguridad
+                total_d_int = int(round(total_domingos_cubiertos_mes))
+                delta_d_int = total_d_int - TOTAL_DEMANDA_DOMINGO
                 st.metric(
                     label="Turnos de Domingo Cubiertos (Total Mes)",
-                    value=f"{int(total_domingos_cubiertos_mes)}",
-                    delta=f"{int(total_domingos_cubiertos_mes - TOTAL_DEMANDA_DOMINGO)} (Excedente)"
+                    value=f"{total_d_int}",
+                    delta=f"{delta_d_int} (Excedente)"
                 )
-                st.caption(f"Requeridos: {TOTAL_DEMANDA_DOMINGO} (Promedio: {DEMANDA_DOMINGO}/dom)")
+                st.caption(f"Requeridos: {TOTAL_DEMANDA_DOMINGO} ({DEMANDA_DOMINGO}/dom)")
 
             
             st.subheader("Asignación Detallada por Patrón (Resumen)")
