@@ -39,7 +39,9 @@ st.sidebar.header("Parámetros de Entrada")
 st.sidebar.write("Ajusta los valores y haz clic en 'Calcular' para ver el resultado.")
 
 DEMANDA_SABADO = st.sidebar.number_input("Plazas necesarias por Sábado", min_value=0, value=116, step=1)
+st.sidebar.markdown(F"(Total mensual: {DEMANDA_SABADO * 4} servicios)")
 DEMANDA_DOMINGO = st.sidebar.number_input("Plazas necesarias por Domingo", min_value=0, value=81, step=1)
+st.sidebar.markdown(F"(Total mensual: {DEMANDA_DOMINGO * 4} servicios)")
 NUM_FINES_DE_SEMANA_MES = 4
 
 st.sidebar.markdown("---")
@@ -161,8 +163,8 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
                     results_data.append({
-                        "Tipo": f"Tipo {type_name}",
-                        "Patrón (Sáb, Dom)": f"{pattern}", 
+                        "Tipo": f"Tipo {type_name} ({sum(employee_types_data[type_name]["selected_patterns"][0])} servicios)",
+                        "Turno": f"{pattern[type_name]}", 
                         "Nº Empleados": int(num_empleados),
                         "Sábados Cubiertos": int(sabados_aportados),
                         "Domingos Cubiertos": int(domingos_aportados)
@@ -195,6 +197,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             st.subheader("Asignación Detallada por Patrón")
             df_results = pd.DataFrame(results_data)
             st.dataframe(df_results, use_container_width=True)
+
             # --- FIN: MODIFICACIÓN ---
             
         else:
