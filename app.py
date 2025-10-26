@@ -69,10 +69,13 @@ for type_name in employee_type_names:
     reverse_display_map = {v: k for k, v in display_map.items()}
     selected_combos_tuples = [reverse_display_map[option] for option in selected_display_options]
     
+    # --- MODIFICACIÓN 1: Guardar el display_map ---
     employee_types_data[type_name] = {
         "max_employees": max_employees,
-        "selected_patterns": selected_combos_tuples
+        "selected_patterns": selected_combos_tuples,
+        "display_map": display_map  # <-- Guardamos el mapa para usarlo en los resultados
     }
+    # --- FIN MODIFICACIÓN 1 ---
 
 # --- BOTÓN DE CÁLCULO Y LÓGICA DE OPTIMIZACIÓN ---
 if st.sidebar.button("Calcular Plantilla Óptima"):
@@ -82,10 +85,8 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
 
     model = pulp.LpProblem("Minimizar_Plantilla_Fin_de_Semana", pulp.LpMinimize)
 
-    # N_vars: Número TOTAL de empleados de cada tipo (A, B, C...)
     N_vars = pulp.LpVariable.dicts("TotalEmpleados", employee_type_names, lowBound=0, cat='Integer')
 
-    # x_vars: Número de empleados del Tipo 'T' asignados al Patrón 'P'
     x_vars = {}
     for type_name in employee_type_names:
         x_vars[type_name] = pulp.LpVariable.dicts(
@@ -95,24 +96,20 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             cat='Integer'
         )
 
-    # Objetivo: Minimizar el número total de empleados
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
-    # Restricción de Sábados
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern[0]  # pattern[0] son los Sábados
+        x_vars[type_name][pattern] * pattern[0]
         for type_name in employee_type_names
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
-    # Restricción de Domingos
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern[1]  # pattern[1] son los Domingos
+        x_vars[type_name][pattern] * pattern[1]
         for type_name in employee_type_names
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_DOMINGO, "Cobertura_Demanda_Domingos"
 
-    # Restricciones de vínculo y máximos
     for type_name in employee_type_names:
         model += pulp.lpSum(
             x_vars[type_name][pattern] for pattern in employee_types_data[type_name]["selected_patterns"]
@@ -120,7 +117,6 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
         
         model += N_vars[type_name] <= employee_types_data[type_name]["max_employees"], f"Maximo_Empleados_{type_name}"
 
-    # Resolver el modelo
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 
     # --- MOSTRAR RESULTADOS ---
@@ -132,26 +128,29 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
         total_empleados = pulp.value(model.objective)
         st.success(f"**Número Mínimo de Empleados Necesarios:** {math.ceil(total_empleados)}")
 
-        # --- INICIO: MODIFICACIÓN - Total por Tipo ---
+        # --- MODIFICACIÓN 2: Pre-calcular totales ---
         st.subheader("Desglose Total por Tipo de Empleado")
         
-        # Usar columnas para mostrar los totales por tipo
+        type_totals = {} # Diccionario para guardar los totales por tipo
         cols = st.columns(NUMERO_TIPO_EMPLEADOS)
         for i, type_name in enumerate(employee_type_names):
-            # Obtenemos el valor de N_vars (Total Empleados por Tipo)
             total_tipo = N_vars[type_name].value()
+            type_totals[type_name] = total_tipo  # Guardamos el total para usarlo luego
             with cols[i]:
                 st.metric(
                     label=f"Total Empleados Tipo {type_name}",
                     value=int(total_tipo)
                 )
-        # --- FIN: MODIFICACIÓN ---
+        # --- FIN MODIFICACIÓN 2 ---
 
         results_data = []
         total_sabados_cubiertos = 0
         total_domingos_cubiertos = 0
 
         for type_name in employee_type_names:
+            # Recuperar el total de este tipo, que ya calculamos
+            total_tipo_empleado = type_totals.get(type_name, 0)
+            
             for pattern in employee_types_data[type_name]["selected_patterns"]:
                 num_empleados = x_vars[type_name][pattern].value()
                 
@@ -161,22 +160,34 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     total_sabados_cubiertos += sabados_aportados
                     total_domingos_cubiertos += domingos_aportados
                     
-                    # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
+                    # --- MODIFICACIÓN 3: Crear nuevas columnas ---
+                    
+                    # Req 1: Días por finde (servicios/mes)
+                    servicios_mes = pattern[0] + pattern[1]
+                    
+                    # Req 2: Partición "fancy"
+                    # Recuperamos el display_map de este tipo
+                    display_map = employee_types_data[type_name]["display_map"] 
+                    particion_str = display_map.get(pattern, str(pattern)) # Usar string legible
+                    
+                    # Req 3: Porcentajes (con control de división por cero)
+                    pct_del_tipo = (num_empleados / total_tipo_empleado * 100) if total_tipo_empleado > 0 else 0
+                    pct_del_total = (num_empleados / total_empleados * 100) if total_empleados > 0 else 0
+
                     results_data.append({
-                        # Esta línea está bien: suma los sábados y domingos del patrón
-                        "Tipo": f"Tipo {type_name} ({pattern[0]+pattern[1]} servicios)",
-                        # CORRECCIÓN: 'pattern' es una tupla (ej. (4,0)), 'type_name' es un str (ej. 'A').
-                        # No se puede hacer pattern[type_name]. Mostramos la tupla 'pattern' directamente.
-                        "Patrón (Sáb, Dom)": f"{pattern}",
+                        "Tipo": f"Tipo {type_name}",
+                        "Partición": particion_str,         # Req 2
+                        "Servicios/Mes": servicios_mes,     # Req 1
                         "Nº Empleados": int(num_empleados),
+                        "% s/ Total Tipo": pct_del_tipo,    # Req 3
+                        "% s/ Total Plantilla": pct_del_total, # Req 3
                         "Sábados Cubiertos": int(sabados_aportados),
                         "Domingos Cubiertos": int(domingos_aportados)
                     })
-                    # --- FIN: MODIFICACIÓN ---
+                    # --- FIN MODIFICACIÓN 3 ---
         
         if results_data:  
             
-            # --- INICIO: MODIFICACIÓN - Métricas de Cobertura mejoradas ---
             st.subheader("Resumen de Cobertura de Demanda (Total Mes)")
             col1, col2 = st.columns(2)
             with col1:
@@ -185,7 +196,6 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     value=f"{int(total_sabados_cubiertos)}",
                     delta=f"{int(total_sabados_cubiertos - TOTAL_DEMANDA_SABADO)} (Excedente)"
                 )
-                # Usar caption para el desglose, es más limpio
                 st.caption(f"Requeridos: {TOTAL_DEMANDA_SABADO} (Promedio: {DEMANDA_SABADO}/sáb)")
             with col2:
                 st.metric(
@@ -194,14 +204,33 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     delta=f"{int(total_domingos_cubiertos - TOTAL_DEMANDA_DOMINGO)} (Excedente)"
                 )
                 st.caption(f"Requeridos: {TOTAL_DEMANDA_DOMINGO} (Promedio: {DEMANDA_DOMINGO}/dom)")
-            # --- FIN: MODIFICACIÓN ---
 
-            # --- INICIO: MODIFICACIÓN - Mover tabla al final ---
+            
             st.subheader("Asignación Detallada por Patrón")
             df_results = pd.DataFrame(results_data)
-            st.dataframe(df_results, use_container_width=True)
 
-            # --- FIN: MODIFICACIÓN ---
+            # --- MODIFICACIÓN 4: Reordenar y formatear la tabla ---
+            
+            # Definir el orden deseado de las columnas
+            column_order = [
+                "Tipo", "Partición", "Servicios/Mes", "Nº Empleados",
+                "% s/ Total Tipo", "% s/ Total Plantilla",
+                "Sábados Cubiertos", "Domingos Cubiertos"
+            ]
+            
+            # Reordenar el DataFrame
+            df_results = df_results[column_order]
+
+            st.dataframe(
+                df_results,
+                use_container_width=True,
+                column_config={
+                    # Formatear las columnas de porcentaje
+                    "% s/ Total Tipo": st.column_config.NumberColumn(format="%.2f%%"),
+                    "% s/ Total Plantilla": st.column_config.NumberColumn(format="%.2f%%")
+                }
+            )
+            # --- FIN MODIFICACIÓN 4 ---
             
         else:
             st.info("La solución óptima no requiere asignar ningún empleado.")
