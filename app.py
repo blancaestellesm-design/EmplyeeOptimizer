@@ -79,36 +79,59 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
 
     model = pulp.LpProblem("Minimizar_Plantilla_Fin_de_Semana", pulp.LpMinimize)
 
+    # N_vars: Número TOTAL de empleados de cada tipo (A, B, C...)
     N_vars = pulp.LpVariable.dicts("TotalEmpleados", employee_type_names, lowBound=0, cat='Integer')
-    x_vars = {}
-    for type_name, data in employee_types_data.items():
-        patterns = data["selected_patterns"]
-        x_vars[type_name] = pulp.LpVariable.dicts(f"Asignacion_{type_name}", patterns, lowBound=0, cat='Integer')
 
+    # --- CORRECCIÓN 1: Definir x_vars ---
+    # x_vars: Número de empleados del Tipo 'T' asignados al Patrón 'P'
+    # Esta es la variable principal que faltaba definir.
+    x_vars = {}
+    for type_name in employee_type_names:
+        # Creamos un diccionario de variables para cada tipo de empleado,
+        # donde cada clave es una tupla 'pattern' (ej: (4, 0))
+        # Nota: Usamos las tuplas como índices para las variables.
+        x_vars[type_name] = pulp.LpVariable.dicts(
+            name=f"Empleados_{type_name}",
+            indices=employee_types_data[type_name]["selected_patterns"],
+            lowBound=0,
+            cat='Integer'
+        )
+    # --- FIN DE LA CORRECCIÓN 1 ---
+
+    # Objetivo: Minimizar el número total de empleados
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
     # Restricción de Sábados
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern
+        x_vars[type_name][pattern] * pattern[0]  # pattern[0] son los Sábados
         for type_name in employee_type_names
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
-    # Restricción de Domingos
+    # --- CORRECCIÓN 2: Restricción de Domingos ---
+    # Se corrige la iteración (no era [1]) y el acceso al patrón (debe ser pattern[1])
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern[1]
+        x_vars[type_name][pattern] * pattern[1]  # pattern[1] son los Domingos
         for type_name in employee_type_names
-        for pattern in employee_types_data[type_name]["selected_patterns"]
+        for pattern in employee_types_data[type_name]["selected_patterns"] # Iterar sobre la lista completa
     ) >= TOTAL_DEMANDA_DOMINGO, "Cobertura_Demanda_Domingos"
+    # --- FIN DE LA CORRECCIÓN 2 ---
 
+    # Restricciones de vínculo y máximos
     for type_name in employee_type_names:
+        # El total de empleados de un tipo (N_vars) es la suma de los empleados
+        # asignados a cada patrón permitido para ese tipo (x_vars)
         model += pulp.lpSum(
             x_vars[type_name][pattern] for pattern in employee_types_data[type_name]["selected_patterns"]
         ) == N_vars[type_name], f"Vinculo_Plantilla_{type_name}"
+        
+        # Restricción del número máximo de empleados por tipo
         model += N_vars[type_name] <= employee_types_data[type_name]["max_employees"], f"Maximo_Empleados_{type_name}"
 
+    # Resolver el modelo
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 
+    # --- MOSTRAR RESULTADOS ---
     st.header("Resultados de la Optimización")
     status = pulp.LpStatus[model.status]
     st.write(f"**Estado de la Solución:** {status}")
@@ -123,20 +146,27 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
 
         for type_name in employee_type_names:
             for pattern in employee_types_data[type_name]["selected_patterns"]:
+                # Obtener el valor de la variable de decisión
                 num_empleados = x_vars[type_name][pattern].value()
+                
                 if num_empleados > 0:
-                    sabados_aportados = num_empleados * pattern
+                    
+                    # --- CORRECCIÓN 3: Cálculo y visualización de resultados ---
+                    # Calcular aportes multiplicando por el índice correcto de la tupla
+                    sabados_aportados = num_empleados * pattern[0]
                     domingos_aportados = num_empleados * pattern[1]
                     total_sabados_cubiertos += sabados_aportados
                     total_domingos_cubiertos += domingos_aportados
                     
                     results_data.append({
                         "Tipo de Empleado": f"Tipo {type_name}",
-                        "Patrón de Trabajo (Sáb, Dom)": f"({pattern}, {pattern[1]})",
+                        # Mostrar la tupla 'pattern' directamente
+                        "Patrón de Trabajo (Sáb, Dom)": f"{pattern}", 
                         "Nº Empleados Asignados": int(num_empleados),
                         "Turnos de Sábado Aportados": int(sabados_aportados),
                         "Turnos de Domingo Aportados": int(domingos_aportados)
                     })
+                    # --- FIN DE LA CORRECCIÓN 3 ---
         
         if results_data:
             df_results = pd.DataFrame(results_data)
