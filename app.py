@@ -12,7 +12,8 @@ def generate_possible_combinations(services_required):
     Devuelve una lista de tuplas (sabados, domingos).
     """
     combinations = []
-    max_days_per_type = 4
+    # Límite de 4 sábados o 4 domingos por mes
+    max_days_per_type = 4 
     for sabados_trabajados in range(max_days_per_type + 1):
         domingos_trabajados = services_required - sabados_trabajados
         if 0 <= domingos_trabajados <= max_days_per_type:
@@ -82,21 +83,15 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
     # N_vars: Número TOTAL de empleados de cada tipo (A, B, C...)
     N_vars = pulp.LpVariable.dicts("TotalEmpleados", employee_type_names, lowBound=0, cat='Integer')
 
-    # --- CORRECCIÓN 1: Definir x_vars ---
     # x_vars: Número de empleados del Tipo 'T' asignados al Patrón 'P'
-    # Esta es la variable principal que faltaba definir.
     x_vars = {}
     for type_name in employee_type_names:
-        # Creamos un diccionario de variables para cada tipo de empleado,
-        # donde cada clave es una tupla 'pattern' (ej: (4, 0))
-        # Nota: Usamos las tuplas como índices para las variables.
         x_vars[type_name] = pulp.LpVariable.dicts(
             name=f"Empleados_{type_name}",
             indices=employee_types_data[type_name]["selected_patterns"],
             lowBound=0,
             cat='Integer'
         )
-    # --- FIN DE LA CORRECCIÓN 1 ---
 
     # Objetivo: Minimizar el número total de empleados
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
@@ -108,24 +103,19 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
-    # --- CORRECCIÓN 2: Restricción de Domingos ---
-    # Se corrige la iteración (no era [1]) y el acceso al patrón (debe ser pattern[1])
+    # Restricción de Domingos
     model += pulp.lpSum(
         x_vars[type_name][pattern] * pattern[1]  # pattern[1] son los Domingos
         for type_name in employee_type_names
-        for pattern in employee_types_data[type_name]["selected_patterns"] # Iterar sobre la lista completa
+        for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_DOMINGO, "Cobertura_Demanda_Domingos"
-    # --- FIN DE LA CORRECCIÓN 2 ---
 
     # Restricciones de vínculo y máximos
     for type_name in employee_type_names:
-        # El total de empleados de un tipo (N_vars) es la suma de los empleados
-        # asignados a cada patrón permitido para ese tipo (x_vars)
         model += pulp.lpSum(
             x_vars[type_name][pattern] for pattern in employee_types_data[type_name]["selected_patterns"]
         ) == N_vars[type_name], f"Vinculo_Plantilla_{type_name}"
         
-        # Restricción del número máximo de empleados por tipo
         model += N_vars[type_name] <= employee_types_data[type_name]["max_employees"], f"Maximo_Empleados_{type_name}"
 
     # Resolver el modelo
@@ -140,49 +130,73 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
         total_empleados = pulp.value(model.objective)
         st.success(f"**Número Mínimo de Empleados Necesarios:** {math.ceil(total_empleados)}")
 
+        # --- INICIO: MODIFICACIÓN - Total por Tipo ---
+        st.subheader("Desglose Total por Tipo de Empleado")
+        
+        # Usar columnas para mostrar los totales por tipo
+        cols = st.columns(NUMERO_TIPO_EMPLEADOS)
+        for i, type_name in enumerate(employee_type_names):
+            # Obtenemos el valor de N_vars (Total Empleados por Tipo)
+            total_tipo = N_vars[type_name].value()
+            with cols[i]:
+                st.metric(
+                    label=f"Total Empleados Tipo {type_name}",
+                    value=int(total_tipo)
+                )
+        # --- FIN: MODIFICACIÓN ---
+
         results_data = []
         total_sabados_cubiertos = 0
         total_domingos_cubiertos = 0
 
         for type_name in employee_type_names:
             for pattern in employee_types_data[type_name]["selected_patterns"]:
-                # Obtener el valor de la variable de decisión
                 num_empleados = x_vars[type_name][pattern].value()
                 
                 if num_empleados > 0:
-                    
-                    # --- CORRECCIÓN 3: Cálculo y visualización de resultados ---
-                    # Calcular aportes multiplicando por el índice correcto de la tupla
                     sabados_aportados = num_empleados * pattern[0]
                     domingos_aportados = num_empleados * pattern[1]
                     total_sabados_cubiertos += sabados_aportados
                     total_domingos_cubiertos += domingos_aportados
                     
+                    # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
                     results_data.append({
-                        "Tipo de Empleado": f"Tipo {type_name}",
-                        # Mostrar la tupla 'pattern' directamente
-                        "Patrón de Trabajo (Sáb, Dom)": f"{pattern}", 
-                        "Nº Empleados Asignados": int(num_empleados),
-                        "Turnos de Sábado Aportados": int(sabados_aportados),
-                        "Turnos de Domingo Aportados": int(domingos_aportados)
+                        "Tipo": f"Tipo {type_name}",
+                        "Patrón (Sáb, Dom)": f"{pattern}", 
+                        "Nº Empleados": int(num_empleados),
+                        "Sábados Cubiertos": int(sabados_aportados),
+                        "Domingos Cubiertos": int(domingos_aportados)
                     })
-                    # --- FIN DE LA CORRECCIÓN 3 ---
+                    # --- FIN: MODIFICACIÓN ---
         
         if results_data:
-            df_results = pd.DataFrame(results_data)
-            st.dataframe(df_results, use_container_width=True)
-
-            st.subheader("Resumen de Cobertura de Demanda")
-            st.metric(  
-                    label="Turnos de Sábado Cubiertos vs. Necesarios",
-                    value=f"Cubiertos: {int(total_sabados_cubiertos)} ({int(total_sabados_cubiertos/4)}) | Necesarios:{TOTAL_DEMANDA_SABADO} ({int(TOTAL_DEMANDA_SABADO/4)})",
+            
+            # --- INICIO: MODIFICACIÓN - Métricas de Cobertura mejoradas ---
+            st.subheader("Resumen de Cobertura de Demanda (Total Mes)")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    label="Turnos de Sábado Cubiertos",
+                    value=f"{int(total_sabados_cubiertos)}",
                     delta=f"{int(total_sabados_cubiertos - TOTAL_DEMANDA_SABADO)} (Excedente)"
                 )
-            st.metric(
-                    label="Turnos de Domingo Cubiertos vs. Necesarios",
-                    value=f"Cubiertos: {int(total_domingos_cubiertos)} ({int(total_domingos_cubiertos/4)}) | Necesarios:{TOTAL_DEMANDA_DOMINGO} ({int(TOTAL_DEMANDA_DOMINGO/4)})",
+                # Usar caption para el desglose, es más limpio
+                st.caption(f"Requeridos: {TOTAL_DEMANDA_SABADO} (Promedio: {DEMANDA_SABADO}/sáb)")
+            with col2:
+                st.metric(
+                    label="Turnos de Domingo Cubiertos",
+                    value=f"{int(total_domingos_cubiertos)}",
                     delta=f"{int(total_domingos_cubiertos - TOTAL_DEMANDA_DOMINGO)} (Excedente)"
                 )
+                st.caption(f"Requeridos: {TOTAL_DEMANDA_DOMINGO} (Promedio: {DEMANDA_DOMINGO}/dom)")
+            # --- FIN: MODIFICACIÓN ---
+
+            # --- INICIO: MODIFICACIÓN - Mover tabla al final ---
+            st.subheader("Asignación Detallada por Patrón")
+            df_results = pd.DataFrame(results_data)
+            st.dataframe(df_results, use_container_width=True)
+            # --- FIN: MODIFICACIÓN ---
+            
         else:
             st.info("La solución óptima no requiere asignar ningún empleado.")
 
