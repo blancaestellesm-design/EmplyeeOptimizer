@@ -163,15 +163,18 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
                     results_data.append({
+                        # Esta línea está bien: suma los sábados y domingos del patrón
                         "Tipo": f"Tipo {type_name} ({pattern[0]+pattern[1]} servicios)",
-                        "Turno": f"{pattern[type_name]}", 
+                        # CORRECCIÓN: 'pattern' es una tupla (ej. (4,0)), 'type_name' es un str (ej. 'A').
+                        # No se puede hacer pattern[type_name]. Mostramos la tupla 'pattern' directamente.
+                        "Patrón (Sáb, Dom)": f"{pattern}",
                         "Nº Empleados": int(num_empleados),
                         "Sábados Cubiertos": int(sabados_aportados),
                         "Domingos Cubiertos": int(domingos_aportados)
                     })
                     # --- FIN: MODIFICACIÓN ---
         
-        if results_data:    
+        if results_data:  
             
             # --- INICIO: MODIFICACIÓN - Métricas de Cobertura mejoradas ---
             st.subheader("Resumen de Cobertura de Demanda (Total Mes)")
