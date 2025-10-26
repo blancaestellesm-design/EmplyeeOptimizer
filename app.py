@@ -10,7 +10,7 @@ def generate_possible_combinations(max_per_type):
     Genera todas las combinaciones numéricas posibles de turnos de sábado y domingo.
     Devuelve una lista de tuplas (sabados, domingos).
     """
-    combinations =
+    combinations = []
     for sabados_trabajados in range(max_per_type + 1):
         domingos_trabajados = max_per_type - sabados_trabajados
         combinations.append((sabados_trabajados, domingos_trabajados))
