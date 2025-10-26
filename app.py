@@ -24,7 +24,7 @@ def create_display_map(combinations):
     Crea un diccionario para mapear tuplas numéricas a cadenas de texto legibles.
     """
     return {
-        combo: f"{combo} Sábado(s), {combo[1]} Domingo(s)"
+        combo: f"{combo[0]} Sábado(s), {combo[1]} Domingo(s)"
         for combo in combinations
     }
 
@@ -47,7 +47,7 @@ NUMERO_TIPO_EMPLEADOS = st.sidebar.selectbox("Número de tipos de empleados", (1
 
 # --- RECOPILACIÓN DE DATOS POR TIPO DE EMPLEADO ---
 employee_types_data = {}
-employee_type_names = [ i for i in range(NUMERO_TIPO_EMPLEADOS) ]  # 'A', 'B', 'C', ...
+employee_type_names = [ chr(i+65) for i in range(NUMERO_TIPO_EMPLEADOS) ]  # 'A', 'B', 'C', ...
 
 for type_name in employee_type_names:
     st.sidebar.markdown(f"### Configuración del Tipo {type_name}")
@@ -60,7 +60,6 @@ for type_name in employee_type_names:
     selected_display_options = st.sidebar.multiselect(
         f"Combinaciones de turnos permitidas para el Tipo {type_name}",
         options=list(display_map.values()),
-        default=list(display_map.values()),
         key=f"multi_{type_name}"
     )
     
@@ -89,14 +88,13 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
     # Restricción de Sábados
-    # CORRECCIÓN: Se multiplica por pattern (el número de sábados)
     model += pulp.lpSum(
         x_vars[type_name][pattern] * pattern
         for type_name in employee_type_names
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
-    # Restricción de Domingos (esta ya estaba correcta)
+    # Restricción de Domingos
     model += pulp.lpSum(
         x_vars[type_name][pattern] * pattern[1]
         for type_name in employee_type_names
@@ -127,7 +125,6 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             for pattern in employee_types_data[type_name]["selected_patterns"]:
                 num_empleados = x_vars[type_name][pattern].value()
                 if num_empleados > 0:
-                    # CORRECCIÓN: Se calcula usando pattern para los sábados
                     sabados_aportados = num_empleados * pattern
                     domingos_aportados = num_empleados * pattern[1]
                     total_sabados_cubiertos += sabados_aportados
@@ -135,7 +132,6 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     results_data.append({
                         "Tipo de Empleado": f"Tipo {type_name}",
-                        # CORRECCIÓN: Se muestra pattern y pattern[1]
                         "Patrón de Trabajo (Sáb, Dom)": f"({pattern}, {pattern[1]})",
                         "Nº Empleados Asignados": int(num_empleados),
                         "Turnos de Sábado Aportados": int(sabados_aportados),
