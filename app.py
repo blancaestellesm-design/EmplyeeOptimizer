@@ -5,91 +5,129 @@ import math
 
 # --- FUNCIONES AUXILIARES ---
 
-def generate_possible_combinations(services_required):
+def generate_pattern_map(services_required):
     """
-    Genera todas las combinaciones numéricas posibles de turnos de sábado y domingo
-    para un número total de servicios dado.
-    Devuelve una lista de tuplas (sabados, domingos).
-    """
-    combinations = []
+    Genera un mapa de patrones de trabajo posibles basado en combinaciones de
+    días sueltos y fines de semana completos, respetando la regla de
+    "máximo 3 fines de semana trabajados" (1 finde libre).
     
-    # --- INICIO DE LA CORRECCIÓN ---
-    # Si el mes tiene 4 findes y 1 debe ser libre, el máximo de días
-    # de un tipo (Sábado o Domingo) que se puede trabajar es 3.
-    max_days_per_type = 3  # <-- ESTE ES EL CAMBIO CLAVE (ANTES ERA 4)
-    # --- FIN DE LA CORRECCIÓN ---
-
-    for sabados_trabajados in range(max_days_per_type + 1):
-        domingos_trabajados = services_required - sabados_trabajados
-        if 0 <= domingos_trabajados <= max_days_per_type:
-            combinations.append((sabados_trabajados, domingos_trabajados))
-    return combinations
-
-def create_display_map(combinations):
+    Devuelve un diccionario:
+    { "display_string": (total_sábados, total_domingos) }
     """
-    Crea un diccionario para mapear tuplas numéricas a cadenas de texto legibles.
-    """
-    return {
-        combo: f"{combo[0]} Sábado(s), {combo[1]} Domingo(s)"
-        for combo in combinations
-    }
+    pattern_map = {}
+    # s = sábados solos, d = domingos solos, c = fines de semana completos
+    for c in range(4): # 0, 1, 2, 3
+        for s in range(4): # 0, 1, 2, 3
+            for d in range(4): # 0, 1, 2, 3
+                
+                total_weekends_worked = s + d + c
+                total_services = s + d + (2 * c)
+                
+                # Regla 1: Máximo 3 fines de semana trabajados
+                # Regla 2: La suma de servicios debe ser la requerida
+                if total_weekends_worked <= 3 and total_services == services_required:
+                    
+                    # El optimizador (PuLP) sigue necesitando el total de Sáb y Dom
+                    pulp_tuple = (s + c, d + c) # (Total Sáb, Total Dom)
+                    
+                    # Crear el string legible para la UI
+                    parts = []
+                    if s > 0: parts.append(f"{s} Sáb. solo(s)")
+                    if d > 0: parts.append(f"{d} Dom. solo(s)")
+                    if c > 0: parts.append(f"{c} Finde(s) Completo(s)")
+                    
+                    display_str = ", ".join(parts)
+                    
+                    # Caso para 0 servicios
+                    if not display_str and total_services == 0:
+                        display_str = "0 servicios (Descanso)"
+
+                    # Añadir al mapa (solo si es un patrón válido)
+                    if display_str:
+                        pattern_map[display_str] = pulp_tuple
+                        
+    return pattern_map
+
 
 # --- CONFIGURACIÓN DE LA PÁGINA WEB ---
 st.set_page_config(page_title="Optimizador de Plantilla", layout="wide")
+
+# --- INICIO DE LA MODIFICACIÓN: ESTILOS CSS ---
+# Inyectamos CSS para cambiar el color de las etiquetas del multiselect
+st.markdown("""
+    <style>
+        /* Selector para la etiqueta (tag) dentro del multiselect */
+        [data-baseweb="tag"] {
+            background-color: #0178D4 !important; /* Color de fondo azul */
+            color: white !important;             /* Color del texto */
+            border-radius: 8px !important;       /* Bordes más suaves */
+        }
+        
+        /* Opcional: Cambiar el color del botón 'x' para borrar */
+        [data-baseweb="tag"] span[role="button"] {
+            color: white !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+# --- FIN DE LA MODIFICACIÓN ---
+
+
 st.title("Optimizador de Plantilla de Fin de Semana")
-st.write("Esta herramienta calcula el número mínimo de empleados necesarios para cubrir la demanda de personal de los fines de semana, basándose en diferentes tipos de empleados y sus patrones de trabajo permitidos.")
+st.write("Esta herramienta calcula el número mínimo de empleados necesarios para cubrir la demanda de personal, respetando la regla de 1 fin de semana libre al mes.")
 
-# --- ENTRADAS DEL USUARIO EN LA BARRA LATERAL ---
-st.sidebar.header("Parámetros de Entrada")
-st.sidebar.write("Ajusta los valores y haz clic en 'Calcular' para ver el resultado.")
+# --- ENTRADAS DEL USUARIO (DENTRO DE UN EXPANDER) ---
+config_expander = st.expander("Configuración de Demanda y Empleados", expanded=True)
+with config_expander:
+    st.header("Parámetros de Entrada")
+    st.write("Ajusta los valores y haz clic en 'Calcular' para ver el resultado.")
 
-DEMANDA_SABADO = st.sidebar.number_input("Plazas necesarias por Sábado", min_value=0, value=116, step=1)
-st.sidebar.markdown(F"(Total mensual: {DEMANDA_SABADO * 4} servicios)")
-DEMANDA_DOMINGO = st.sidebar.number_input("Plazas necesarias por Domingo", min_value=0, value=81, step=1)
-st.sidebar.markdown(F"(Total mensual: {DEMANDA_DOMINGO * 4} servicios)")
-NUM_FINES_DE_SEMANA_MES = 4
+    DEMANDA_SABADO = st.number_input("Plazas necesarias por Sábado", min_value=0, value=116, step=1)
+    st.markdown(F"(Total mensual: {DEMANDA_SABADO * 4} servicios)")
+    DEMANDA_DOMINGO = st.number_input("Plazas necesarias por Domingo", min_value=0, value=81, step=1)
+    st.markdown(F"(Total mensual: {DEMANDA_DOMINGO * 4} servicios)")
+    NUM_FINES_DE_SEMANA_MES = 4
 
-st.sidebar.markdown("---")
+    st.markdown("---")
 
-NUMERO_TIPO_EMPLEADOS = st.sidebar.selectbox("Número de tipos de empleados", (1, 2, 3), index=1)
+    NUMERO_TIPO_EMPLEADOS = st.selectbox("Número de tipos de empleados", (1, 2, 3), index=1)
 
-# --- RECOPILACIÓN DE DATOS POR TIPO DE EMPLEADO ---
-employee_types_data = {}
-employee_type_names = [ chr(i+65) for i in range(NUMERO_TIPO_EMPLEADOS) ]  # 'A', 'B', 'C', ...
+    # --- RECOPILACIÓN DE DATOS POR TIPO DE EMPLEADO ---
+    employee_types_data = {}
+    employee_type_names = [ chr(i+65) for i in range(NUMERO_TIPO_EMPLEADOS) ]  # 'A', 'B', 'C', ...
 
-for type_name in employee_type_names:
-    st.sidebar.markdown(f"### Configuración del Tipo {type_name}")
-    max_employees = st.sidebar.number_input(f"Nº Máximo de empleados del Tipo {type_name}", min_value=0, value=150, step=1, key=f"max_{type_name}")
-    services_per_employee = st.sidebar.number_input(f"Nº de servicios de fin de semana que cubre el Tipo {type_name}", min_value=1, value=4, max_value=8, step=1, key=f"serv_{type_name}")
-    
-    possible_combos = generate_possible_combinations(services_per_employee)
-    display_map = create_display_map(possible_combos)
-    
-    selected_display_options = st.sidebar.multiselect(
-        f"Combinaciones de turnos permitidas para el Tipo {type_name}",
-        options=list(display_map.values()),
-        key=f"multi_{type_name}"
-    )
-    
-    reverse_display_map = {v: k for k, v in display_map.items()}
-    selected_combos_tuples = [reverse_display_map[option] for option in selected_display_options]
-    
-    employee_types_data[type_name] = {
-        "max_employees": max_employees,
-        "selected_patterns": selected_combos_tuples,
-        "display_map": display_map
-    }
+    for type_name in employee_type_names:
+        st.markdown(f"### Configuración del Tipo {type_name}")
+        max_employees = st.number_input(f"Nº Máximo de empleados del Tipo {type_name}", min_value=0, value=150, step=1, key=f"max_{type_name}")
+        services_per_employee = st.number_input(f"Nº de servicios de fin de semana que cubre el Tipo {type_name}", min_value=1, value=4, max_value=8, step=1, key=f"serv_{type_name}")
+        
+        # Generar el mapa de patrones basado en la nueva lógica
+        master_map = generate_pattern_map(services_per_employee)
+        pattern_options = list(master_map.keys())
+        
+        selected_display_options = st.multiselect(
+            f"Particiones de turnos permitidas para el Tipo {type_name}",
+            options=pattern_options,
+            key=f"multi_{type_name}"
+        )
+        
+        employee_types_data[type_name] = {
+            "max_employees": max_employees,
+            "master_map": master_map, # Guardamos el mapa completo {display_str: (s,d)}
+            "selected_patterns": selected_display_options # Guardamos solo los strings seleccionados
+        }
 
-# --- BOTÓN DE CÁLCULO Y LÓGICA DE OPTIMIZACIÓN ---
-if st.sidebar.button("Calcular Plantilla Óptima"):
+# --- BOTÓN DE CÁLCULO (FUERA DEL EXPANDER) ---
+if st.button("Calcular Plantilla Óptima", type="primary"):
 
     TOTAL_DEMANDA_SABADO = DEMANDA_SABADO * NUM_FINES_DE_SEMANA_MES
     TOTAL_DEMANDA_DOMINGO = DEMANDA_DOMINGO * NUM_FINES_DE_SEMANA_MES
 
     model = pulp.LpProblem("Minimizar_Plantilla_Fin_de_Semana", pulp.LpMinimize)
 
+    # N_vars: Número TOTAL de empleados de cada tipo (A, B, C...)
     N_vars = pulp.LpVariable.dicts("TotalEmpleados", employee_type_names, lowBound=0, cat='Integer')
 
+    # x_vars: Las claves (índices) ahora son los strings legibles (ej: "1 Sáb. solo...")
     x_vars = {}
     for type_name in employee_type_names:
         x_vars[type_name] = pulp.LpVariable.dicts(
@@ -99,27 +137,34 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             cat='Integer'
         )
 
+    # Objetivo: Minimizar el número total de empleados
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
+    # Restricción de Sábados
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern[0]
+        # x_vars[tipo][string_patrón] * (sábados de ese string)
+        x_vars[type_name][pattern_str] * employee_types_data[type_name]["master_map"][pattern_str][0] 
         for type_name in employee_type_names
-        for pattern in employee_types_data[type_name]["selected_patterns"]
+        for pattern_str in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
+    # Restricción de Domingos
     model += pulp.lpSum(
-        x_vars[type_name][pattern] * pattern[1]
+        # x_vars[tipo][string_patrón] * (domingos de ese string)
+        x_vars[type_name][pattern_str] * employee_types_data[type_name]["master_map"][pattern_str][1]
         for type_name in employee_type_names
-        for pattern in employee_types_data[type_name]["selected_patterns"]
+        for pattern_str in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_DOMINGO, "Cobertura_Demanda_Domingos"
 
+    # Restricciones de vínculo y máximos
     for type_name in employee_type_names:
         model += pulp.lpSum(
-            x_vars[type_name][pattern] for pattern in employee_types_data[type_name]["selected_patterns"]
+            x_vars[type_name][pattern_str] for pattern_str in employee_types_data[type_name]["selected_patterns"]
         ) == N_vars[type_name], f"Vinculo_Plantilla_{type_name}"
         
         model += N_vars[type_name] <= employee_types_data[type_name]["max_employees"], f"Maximo_Empleados_{type_name}"
 
+    # Resolver el modelo
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 
     # --- MOSTRAR RESULTADOS ---
@@ -150,26 +195,29 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
 
         for type_name in employee_type_names:
             total_tipo_empleado = type_totals.get(type_name, 0)
+            master_map = employee_types_data[type_name]["master_map"]
             
-            for pattern in employee_types_data[type_name]["selected_patterns"]:
-                num_empleados = x_vars[type_name][pattern].value()
+            for pattern_str in employee_types_data[type_name]["selected_patterns"]:
+                num_empleados = x_vars[type_name][pattern_str].value()
                 
                 if num_empleados > 0:
-                    sabados_aportados = num_empleados * pattern[0]
-                    domingos_aportados = num_empleados * pattern[1]
+                    # Buscar la tupla (Sáb, Dom) correspondiente al string
+                    pulp_tuple = master_map[pattern_str] 
+                    
+                    sabados_aportados = num_empleados * pulp_tuple[0]
+                    domingos_aportados = num_empleados * pulp_tuple[1]
                     total_sabados_cubiertos += sabados_aportados
                     total_domingos_cubiertos += domingos_aportados
                     
-                    servicios_mes = pattern[0] + pattern[1]
-                    display_map = employee_types_data[type_name]["display_map"] 
-                    particion_str = display_map.get(pattern, str(pattern))
+                    servicios_mes = pulp_tuple[0] + pulp_tuple[1]
+                    # 'particion_str' ya es el string legible que queremos
                     
                     pct_del_tipo = (num_empleados / total_tipo_empleado * 100) if total_tipo_empleado > 0 else 0
                     pct_del_total = (num_empleados / total_empleados * 100) if total_empleados > 0 else 0
 
                     results_data.append({
                         "Tipo": f"Tipo {type_name}",
-                        "Partición": particion_str,
+                        "Partición": pattern_str, # ¡Listo!
                         "Servicios/Mes": servicios_mes,
                         "Nº Empleados": int(num_empleados),
                         "% s/ Total Tipo": pct_del_tipo,
@@ -207,7 +255,8 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                 "Sábados Cubiertos", "Domingos Cubiertos"
             ]
             
-            df_results = df_results[column_order]
+            # Asegurarse de que las columnas existen antes de reordenar
+            df_results = df_results.reindex(columns=column_order)
 
             st.dataframe(
                 df_results,
