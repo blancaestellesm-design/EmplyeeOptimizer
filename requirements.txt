@@ -1,2 +1,4 @@
-pulp
 streamlit
+pulp
+pandas
+math
