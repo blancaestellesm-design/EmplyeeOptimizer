@@ -11,13 +11,10 @@ def generate_possible_combinations(services_required):
     para un número total de servicios dado.
     Devuelve una lista de tuplas (sabados, domingos).
     """
-    # CORRECCIÓN: Se inicializa la lista vacía correctamente.
     combinations = []
-    # El número máximo de sábados o domingos que se pueden trabajar es 4.
     max_days_per_type = 4
     for sabados_trabajados in range(max_days_per_type + 1):
         domingos_trabajados = services_required - sabados_trabajados
-        # La combinación es válida si ambos valores están entre 0 y 4.
         if 0 <= domingos_trabajados <= max_days_per_type:
             combinations.append((sabados_trabajados, domingos_trabajados))
     return combinations
@@ -26,7 +23,6 @@ def create_display_map(combinations):
     """
     Crea un diccionario para mapear tuplas numéricas a cadenas de texto legibles.
     """
-    # CORRECCIÓN: Se accede a los elementos de la tupla (combo y combo[1]) para un formato correcto.
     return {
         combo: f"{combo} Sábado(s), {combo[1]} Domingo(s)"
         for combo in combinations
@@ -47,12 +43,11 @@ NUM_FINES_DE_SEMANA_MES = 4
 
 st.sidebar.markdown("---")
 
-NUMERO_TIPO_EMPLEADOS = st.sidebar.selectbox("Número de tipos de empleados", (1, 2, 3, 4), index=1)
+NUMERO_TIPO_EMPLEADOS = st.sidebar.selectbox("Número de tipos de empleados", (1, 2, 3), index=1)
 
 # --- RECOPILACIÓN DE DATOS POR TIPO DE EMPLEADO ---
 employee_types_data = {}
-# CORRECCIÓN: Se genera la lista de nombres de tipos de empleado (A, B, C...).
-employee_type_names = [chr(65 + i) for i in range(NUMERO_TIPO_EMPLEADOS)]
+employee_type_names = [ i for i in range(NUMERO_TIPO_EMPLEADOS) ]  # 'A', 'B', 'C', ...
 
 for type_name in employee_type_names:
     st.sidebar.markdown(f"### Configuración del Tipo {type_name}")
@@ -93,12 +88,15 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
 
     model += pulp.lpSum(N_vars), "Minimizar_Plantilla_Total"
 
+    # Restricción de Sábados
+    # CORRECCIÓN: Se multiplica por pattern (el número de sábados)
     model += pulp.lpSum(
         x_vars[type_name][pattern] * pattern
         for type_name in employee_type_names
         for pattern in employee_types_data[type_name]["selected_patterns"]
     ) >= TOTAL_DEMANDA_SABADO, "Cobertura_Demanda_Sabados"
 
+    # Restricción de Domingos (esta ya estaba correcta)
     model += pulp.lpSum(
         x_vars[type_name][pattern] * pattern[1]
         for type_name in employee_type_names
@@ -121,7 +119,6 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
         total_empleados = pulp.value(model.objective)
         st.success(f"**Número Mínimo de Empleados Necesarios:** {math.ceil(total_empleados)}")
 
-        # CORRECCIÓN: Se inicializa la lista vacía correctamente.
         results_data = []
         total_sabados_cubiertos = 0
         total_domingos_cubiertos = 0
@@ -130,6 +127,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
             for pattern in employee_types_data[type_name]["selected_patterns"]:
                 num_empleados = x_vars[type_name][pattern].value()
                 if num_empleados > 0:
+                    # CORRECCIÓN: Se calcula usando pattern para los sábados
                     sabados_aportados = num_empleados * pattern
                     domingos_aportados = num_empleados * pattern[1]
                     total_sabados_cubiertos += sabados_aportados
@@ -137,6 +135,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     results_data.append({
                         "Tipo de Empleado": f"Tipo {type_name}",
+                        # CORRECCIÓN: Se muestra pattern y pattern[1]
                         "Patrón de Trabajo (Sáb, Dom)": f"({pattern}, {pattern[1]})",
                         "Nº Empleados Asignados": int(num_empleados),
                         "Turnos de Sábado Aportados": int(sabados_aportados),
