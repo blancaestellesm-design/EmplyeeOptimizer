@@ -163,7 +163,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
                     results_data.append({
-                        "Tipo": f"Tipo {type_name} ({sum(pattern)} servicios)",
+                        "Tipo": f"Tipo {type_name} ({pattern[0]+pattern[1]} servicios)",
                         "Turno": f"{pattern[type_name]}", 
                         "Nº Empleados": int(num_empleados),
                         "Sábados Cubiertos": int(sabados_aportados),
