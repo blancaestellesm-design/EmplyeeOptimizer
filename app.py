@@ -163,7 +163,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     
                     # --- INICIO: MODIFICACIÓN - Renombrar columnas ---
                     results_data.append({
-                        "Tipo": f"Tipo {type_name} ({sum(employee_types_data[type_name]["selected_patterns"][0])} servicios)",
+                        "Tipo": f"Tipo {type_name} ({sum(pattern)} servicios)",
                         "Turno": f"{pattern[type_name]}", 
                         "Nº Empleados": int(num_empleados),
                         "Sábados Cubiertos": int(sabados_aportados),
@@ -171,7 +171,7 @@ if st.sidebar.button("Calcular Plantilla Óptima"):
                     })
                     # --- FIN: MODIFICACIÓN ---
         
-        if results_data:
+        if results_data:    
             
             # --- INICIO: MODIFICACIÓN - Métricas de Cobertura mejoradas ---
             st.subheader("Resumen de Cobertura de Demanda (Total Mes)")
